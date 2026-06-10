@@ -1,0 +1,196 @@
+
+<style>
+  .wrapper {
+    padding: 1.5rem 0;
+    background: repeating-linear-gradient(45deg,transparent,transparent 18px,rgba(83,74,183,0.06) 18px,rgba(83,74,183,0.06) 19px),
+    repeating-linear-gradient(-45deg,transparent,transparent 18px,rgba(83,74,183,0.06) 18px,rgba(83,74,183,0.06) 19px);
+    border-radius: var(--border-radius-lg);
+    border: 0.5px solid #AFA9EC;
+  }
+  .title-area { text-align: center; margin-bottom: 1rem; }
+  .title-area h1 { font-size: 22px; font-weight: 500; margin: 0; color: var(--color-text-primary); }
+  .board { display: grid; grid-template-columns: repeat(3, 100px); gap: 10px; margin: 0 auto 1.5rem; width: fit-content; }
+  .cell {
+    width: 100px; height: 100px;
+    background: var(--color-background-primary);
+    border: 0.5px solid #AFA9EC;
+    border-radius: var(--border-radius-lg);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 40px; cursor: pointer;
+    transition: background 0.12s, transform 0.1s;
+    user-select: none;
+  }
+  .cell:hover:not(.taken) { background: #EEEDFE; transform: scale(1.05); }
+  .cell.taken { cursor: default; }
+  .cell.win { background: #EEEDFE; border-color: #534AB7; border-width: 1.5px; }
+  .status { text-align: center; font-size: 17px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 4px; }
+  .sub { text-align: center; font-size: 13px; color: var(--color-text-secondary); margin-bottom: 1.2rem; }
+  .scores { display: flex; gap: 10px; justify-content: center; margin-bottom: 1.2rem; }
+  .score-card {
+    background: var(--color-background-primary);
+    border: 0.5px solid #AFA9EC;
+    border-radius: var(--border-radius-md);
+    padding: 8px 20px; text-align: center; min-width: 80px;
+  }
+  .score-card .label { font-size: 12px; color: var(--color-text-secondary); }
+  .score-card .val { font-size: 22px; font-weight: 500; color: #534AB7; }
+  .score-card.active { border-color: #534AB7; border-width: 1.5px; }
+  .btns { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    padding: 7px 16px; border-radius: var(--border-radius-md);
+    border: 0.5px solid #AFA9EC;
+    background: var(--color-background-primary); cursor: pointer;
+    color: var(--color-text-primary); font-size: 13px;
+    transition: background 0.12s, transform 0.1s;
+  }
+  .btn:hover { background: #EEEDFE; }
+  .btn:active { transform: scale(0.97); }
+  .btn.on { background: #534AB7; color: #EEEDFE; border-color: #534AB7; }
+</style>
+
+<h2 class="sr-only">三目並べゲーム</h2>
+
+<div class="wrapper">
+  <div class="title-area"><h1>三目並べ</h1></div>
+
+  <div id="status" class="status">⭕ の番です</div>
+  <div id="sub" class="sub">先に3つ並べた方が勝ち！</div>
+
+  <div class="scores">
+    <div class="score-card active" id="card-o">
+      <div class="label">⭕ プレイヤー</div>
+      <div class="val" id="score-o">0</div>
+    </div>
+    <div class="score-card" id="card-draw">
+      <div class="label">引き分け</div>
+      <div class="val" id="score-d">0</div>
+    </div>
+    <div class="score-card" id="card-x">
+      <div class="label">❌ プレイヤー</div>
+      <div class="val" id="score-x">0</div>
+    </div>
+  </div>
+
+  <div class="board" id="board">
+    <div class="cell" data-i="0"></div><div class="cell" data-i="1"></div><div class="cell" data-i="2"></div>
+    <div class="cell" data-i="3"></div><div class="cell" data-i="4"></div><div class="cell" data-i="5"></div>
+    <div class="cell" data-i="6"></div><div class="cell" data-i="7"></div><div class="cell" data-i="8"></div>
+  </div>
+
+  <div class="btns">
+    <button class="btn" id="mode-btn" onclick="toggleMode()">👥 2人対戦中</button>
+    <button class="btn" onclick="resetBoard()">🔄 リセット</button>
+    <button class="btn" onclick="resetAll()">📊 スコアリセット</button>
+  </div>
+</div>
+
+<script>
+  let board = Array(9).fill(null);
+  let current = 'O';
+  let scores = { O:0, X:0, D:0 };
+  let gameOver = false;
+  let vsAI = false;
+
+  const wins = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+
+  function checkWin(b,p){ return wins.find(([a,c,d])=>b[a]===p&&b[c]===p&&b[d]===p)||null; }
+
+  function render(winLine){
+    document.querySelectorAll('.cell').forEach(cell=>{
+      const i=+cell.dataset.i;
+      cell.textContent=board[i]==='O'?'⭕':board[i]==='X'?'❌':'';
+      cell.classList.toggle('taken',!!board[i]);
+      cell.classList.toggle('win',!!(winLine&&winLine.includes(i)));
+    });
+  }
+
+  function updateCards(){
+    document.getElementById('score-o').textContent=scores.O;
+    document.getElementById('score-x').textContent=scores.X;
+    document.getElementById('score-d').textContent=scores.D;
+    document.getElementById('card-o').classList.toggle('active',current==='O'&&!gameOver);
+    document.getElementById('card-x').classList.toggle('active',current==='X'&&!gameOver);
+  }
+
+  function handleClick(i){
+    if(gameOver||board[i]) return;
+    if(vsAI&&current==='X') return;
+    makeMove(i);
+    if(vsAI&&!gameOver&&current==='X') setTimeout(aiMove,380);
+  }
+
+  function makeMove(i){
+    board[i]=current;
+    const winLine=checkWin(board,current);
+    if(winLine){
+      render(winLine); scores[current]++;
+      document.getElementById('status').textContent=(current==='O'?'⭕':'❌')+' の勝ち！🎉';
+      document.getElementById('sub').textContent='リセットボタンを押してもう一度！';
+      gameOver=true;
+    } else if(board.every(v=>v)){
+      render(null); scores.D++;
+      document.getElementById('status').textContent='引き分け！🤝';
+      document.getElementById('sub').textContent='リセットボタンを押してもう一度！';
+      gameOver=true;
+    } else {
+      render(null);
+      current=current==='O'?'X':'O';
+      const who=vsAI&&current==='X'?'🤖 AIが考えています...':(current==='O'?'⭕ の番です':'❌ の番です');
+      document.getElementById('status').textContent=who;
+      document.getElementById('sub').textContent='先に3つ並べた方が勝ち！';
+    }
+    updateCards();
+  }
+
+  function aiMove(){
+    let best=-Infinity,move=-1;
+    for(let i=0;i<9;i++){
+      if(!board[i]){board[i]='X';const s=minimax(board,0,false);board[i]=null;if(s>best){best=s;move=i;}}
+    }
+    if(move!==-1) makeMove(move);
+  }
+
+  function minimax(b,depth,isMax){
+    if(checkWin(b,'X')) return 10-depth;
+    if(checkWin(b,'O')) return depth-10;
+    if(b.every(v=>v)) return 0;
+    if(isMax){let best=-Infinity;for(let i=0;i<9;i++){if(!b[i]){b[i]='X';best=Math.max(best,minimax(b,depth+1,false));b[i]=null;}}return best;}
+    else{let best=Infinity;for(let i=0;i<9;i++){if(!b[i]){b[i]='O';best=Math.min(best,minimax(b,depth+1,true));b[i]=null;}}return best;}
+  }
+
+  function updateModeBtn(){
+    const btn=document.getElementById('mode-btn');
+    if(vsAI){
+      btn.textContent='🤖 AI対戦中';
+      btn.classList.add('on');
+      document.getElementById('card-x').querySelector('.label').textContent='🤖 AI';
+    } else {
+      btn.textContent='👥 2人対戦中';
+      btn.classList.remove('on');
+      document.getElementById('card-x').querySelector('.label').textContent='❌ プレイヤー';
+    }
+  }
+
+  function toggleMode(){
+    vsAI=!vsAI;
+    updateModeBtn();
+    resetBoard();
+  }
+
+  function resetBoard(){
+    board=Array(9).fill(null);current='O';gameOver=false;
+    render(null);
+    document.getElementById('status').textContent='⭕ の番です';
+    document.getElementById('sub').textContent='先に3つ並べた方が勝ち！';
+    updateCards();
+  }
+
+  function resetAll(){ scores={O:0,X:0,D:0}; resetBoard(); }
+
+  document.querySelectorAll('.cell').forEach(cell=>{
+    cell.addEventListener('click',()=>handleClick(+cell.dataset.i));
+  });
+
+  updateCards();
+  updateModeBtn();
+</script>
